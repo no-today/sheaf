@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity=".35"/></filter>
+    <radialGradient id="ground" cx=".5" cy=".35" r=".8"><stop offset="0" stop-color="#2c3038"/><stop offset="1" stop-color="#0c0d10"/></radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ground)" filter="url(#shadow)"/>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="2"/>
+  <g fill="none" stroke-width="50" stroke-linecap="round">
+    <path d="M320 290 C320 450 512 470 512 530 S660 620 660 760" stroke="#ffffff" stroke-opacity=".72"/>
+    <path d="M416 290 C416 450 512 470 512 530 S586 620 586 760" stroke="#d8dade" stroke-opacity=".72"/>
+    <path d="M608 290 C608 450 512 470 512 530 S438 620 438 760" stroke="#b4b7be" stroke-opacity=".72"/>
+    <path d="M704 290 C704 450 512 470 512 530 S364 620 364 760" stroke="#8b8f97" stroke-opacity=".72"/>
+    <path d="M512 290 V760" stroke="#4be3a8"/>
+  </g>
+</svg>

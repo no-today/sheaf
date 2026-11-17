@@ -1,0 +1,39 @@
+#!/bin/sh
+# Sheaf commit convention hook: commit subjects start with the requirement number.
+# Install: docs/templates/agent-commit-convention.md, "Enforce on this Mac".
+#
+# Once core.hooksPath is set, git stops running a repository's own .git/hooks, so every hook name links to this
+# script: it runs the repository's hook of the same name first, and commit-msg then checks the convention.
+# SHEAF_REQUIREMENT_PATTERN (an extended regex) overrides the default number pattern, as Sheaf's setting does.
+
+name=$(basename "$0")
+local_hook="$(git rev-parse --git-common-dir)/hooks/$name"
+if [ -x "$local_hook" ]; then
+  "$local_hook" "$@" || exit $?
+fi
+[ "$name" = commit-msg ] || exit 0
+
+msg="$1"
+pattern=${SHEAF_REQUIREMENT_PATTERN:-'[A-Z][A-Z0-9]+-[0-9]+'}
+fail() { printf '%s\n' "commit-msg: $*" "(skip once with git commit --no-verify)" >&2; exit 1; }
+
+# Merges keep git's default message, which names the branch; reverts and fixups follow the commit they touch.
+[ -f "$(git rev-parse --git-path MERGE_HEAD)" ] && exit 0
+subject=$(grep -v '^#' "$msg" | sed '/^[[:space:]]*$/d' | head -n 1)
+case "$subject" in
+  "" | "Merge "* | "Revert "* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null)
+from_branch=$(printf '%s' "$branch" | grep -oE "$pattern" | head -n 1)
+leading=$(printf '%s' "$subject" | grep -oE "^($pattern)([^0-9A-Za-z]|$)" | grep -oE "$pattern" | head -n 1)
+
+if [ -z "$leading" ]; then
+  [ -n "$from_branch" ] || fail "the subject must start with the requirement number, e.g. \"PAY-142 Add payment capture\"; branch \"$branch\" names none either"
+  tmp="$msg.sheaf"
+  awk -v n="$from_branch" '!done && !/^#/ && NF { print n " " $0; done = 1; next } { print }' "$msg" > "$tmp" && mv "$tmp" "$msg"
+  printf '%s\n' "commit-msg: added $from_branch from the branch name to the subject" >&2
+elif [ -n "$from_branch" ] && [ "$leading" != "$from_branch" ]; then
+  printf '%s\n' "commit-msg: note: the subject says $leading, the branch says $from_branch (not blocked)" >&2
+fi
+exit 0

@@ -1,0 +1,7 @@
+{
+  "name": "Sheaf",
+  "identifier": "no-today.sheaf",
+  "version": "0.1.0",
+  "out": "build",
+  "buildCommand": "scripts/build-cli.sh"
+}

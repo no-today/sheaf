@@ -1,0 +1,10 @@
+/build/
+/resources/darwin-arm64/sheaf
+/resources/darwin/_sheaf
+/.mygo/
+mygo_windows_*.syso
+.DS_Store
+/.idea/
+/.claude/worktrees/
+/site/.wrangler/
+/design/
