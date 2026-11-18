@@ -10,19 +10,33 @@ import (
 
 func TestScanNestedRepoNames(t *testing.T) {
 	testutil.Isolate(t)
-	for _, tc := range []struct{ child, wantRoot string }{
-		{"api", "."},
-		{"lib", "api"},
+	for _, tc := range []struct {
+		child, wantChild string
+		rootIsRepo       bool
+	}{
+		{"api", "./api", true},
+		{"lib", "lib", true},
+		{"api", "api", false},
 	} {
-		t.Run(tc.child, func(t *testing.T) {
-			root := testutil.NewRepo(t, filepath.Join(t.TempDir(), "api"))
-			child := testutil.NewRepo(t, filepath.Join(root.Dir, tc.child))
-			repos, err := Scan(t.Context(), root.Dir)
+		t.Run(tc.wantChild, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "api")
+			want := map[string]string{filepath.Join(root, tc.child): tc.wantChild}
+			if tc.rootIsRepo {
+				testutil.NewRepo(t, root)
+				want[root] = "api"
+			}
+			testutil.NewRepo(t, filepath.Join(root, tc.child))
+			repos, err := Scan(t.Context(), root)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(repos) != 2 || repos[0].Name != tc.wantRoot || repos[0].Dir != root.Dir || repos[1].Name != tc.child || repos[1].Dir != child.Dir {
-				t.Fatalf("sorted repos = %+v, want root %q followed by child %q", repos, tc.wantRoot, tc.child)
+			if len(repos) != len(want) {
+				t.Fatalf("got %d repos, want %d", len(repos), len(want))
+			}
+			for _, r := range repos {
+				if r.Name != want[r.Dir] {
+					t.Errorf("repo %s named %q, want %q", r.Dir, r.Name, want[r.Dir])
+				}
 			}
 		})
 	}

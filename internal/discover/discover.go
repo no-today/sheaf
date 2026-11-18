@@ -7,7 +7,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -23,7 +22,7 @@ const (
 )
 
 type Repo struct {
-	Name      string // slash-separated workspace-relative path, using the root's basename when available
+	Name      string // workspace-relative name; the root reserves its basename
 	Dir       string // main working directory
 	GitDir    string // common git directory
 	Kind      Kind
@@ -53,6 +52,7 @@ func Scan(ctx context.Context, root string) ([]Repo, error) {
 		return nil, err
 	}
 	seen := map[string]bool{}
+	var rootIsRepo bool
 	var repos []Repo
 	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -71,7 +71,10 @@ func Scan(ctx context.Context, root string) ([]Repo, error) {
 		gitDir, kind, ok := resolve(p, d.IsDir())
 		if ok && !seen[gitDir] {
 			seen[gitDir] = true
-			repos = append(repos, Repo{Name: rel(root, dir), Dir: dir, GitDir: gitDir, Kind: kind})
+			if dir == root {
+				rootIsRepo = true
+			}
+			repos = append(repos, Repo{Dir: dir, GitDir: gitDir, Kind: kind})
 		}
 		if d.IsDir() {
 			return filepath.SkipDir
@@ -81,14 +84,9 @@ func Scan(ctx context.Context, root string) ([]Repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if i := slices.IndexFunc(repos, func(r Repo) bool { return r.Dir == root }); i >= 0 {
-		base := filepath.Base(root)
-		if !slices.ContainsFunc(repos, func(r Repo) bool { return r.Name == base }) {
-			repos[i].Name = base
-		}
-	}
 	var wg sync.WaitGroup
 	for i := range repos {
+		repos[i].Name = rel(root, repos[i].Dir, rootIsRepo)
 		wg.Add(1)
 		go func() { defer wg.Done(); repos[i].Worktrees = worktrees(ctx, &repos[i]) }()
 	}
@@ -153,10 +151,16 @@ func clean(p string) string {
 	return filepath.Clean(p)
 }
 
-func rel(root, dir string) string {
+func rel(root, dir string, rootIsRepo bool) string {
+	if dir == root {
+		return filepath.Base(root)
+	}
 	r, err := filepath.Rel(root, dir)
 	if err != nil {
 		return dir
+	}
+	if rootIsRepo && r == filepath.Base(root) {
+		return "./" + r
 	}
 	return filepath.ToSlash(r)
 }
