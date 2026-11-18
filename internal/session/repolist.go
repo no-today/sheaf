@@ -154,7 +154,10 @@ func (s *Session) applyTracked(wait bool) bool {
 		s.mu.Unlock()
 		s.Go(func() { s.saveIndex() })
 	}
-	s.setState(func(st *State) { st.Commits = ix.Commits() })
+	s.setState(func(st *State) {
+		st.Commits = ix.Commits()
+		st.Failed = mergeFailures(st.Failed, kept, nil, d)
+	})
 	if len(paths) > 0 {
 		s.Go(func() { s.RefreshDirty(s.ctx, paths, false) })
 	}
