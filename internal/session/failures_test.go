@@ -10,6 +10,37 @@ import (
 	"sheaf/internal/testutil"
 )
 
+func TestBrokenConfigVanishingBetweenReadAndRename(t *testing.T) {
+	testutil.Isolate(t)
+	root := t.TempDir()
+	opts := Options{DataDir: t.TempDir(), CacheDir: t.TempDir(), NoAutoRefresh: true}
+	path := filepath.Join(opts.DataDir, "workspaces", WorkspaceID(root), "workspace.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"master":`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	opts.Now = func() time.Time { // the stamp is taken after the read: the file vanishes right there
+		os.Remove(path)
+		return time.Now()
+	}
+	s, err := Open(context.Background(), root, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if s.cfg.Bases == nil {
+		t.Fatal("Bases must be initialised like a missing file")
+	}
+	if err := s.SetBase("r", "main"); err != nil { // the write that used to panic
+		t.Fatal(err)
+	}
+	if s.Info().ConfigBackup != "" { // nothing was moved aside: the file is simply gone
+		t.Fatal(s.Info().ConfigBackup)
+	}
+}
+
 func TestRefreshReportsAndClearsUnreadableRepo(t *testing.T) {
 	testutil.Isolate(t)
 	root := t.TempDir()

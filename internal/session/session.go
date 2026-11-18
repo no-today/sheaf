@@ -192,16 +192,11 @@ func Open(ctx context.Context, root string, opts Options) (*Session, error) {
 	s.tasks.changed = opts.OnTasks
 	s.rec = gitcli.Recorder{WriteLog: filepath.Join(opts.DataDir, "workspaces", id, "commands.jsonl"), OnChange: s.cmdChanged, Describe: sourceText, Now: opts.Now, Workspace: root}
 	ctx = s.git(ctx, "open")
-	if cfg, err := s.loadConfig(ctx); err == nil {
-		s.cfg = cfg
-	} else {
-		// A file we could not read or parse stays on disk under its own name; opening continues with defaults only
-		// after the broken bytes are safe in a backup. Never open a file a later write would overwrite.
-		if s.configBackup == "" {
-			return nil, err
-		}
-		s.cfg = Config{Root: root, Bases: map[string]string{}}
+	cfg, err := s.loadConfig(ctx) // a broken file is moved aside inside; an error means it could not be
+	if err != nil {
+		return nil, err
 	}
+	s.cfg = cfg
 	if s.cfg.Root != root {
 		s.cfg.Root = root
 		// Existing configurations retain their bytes until an explicit settings write; recent.json locates them meanwhile.
@@ -272,13 +267,23 @@ func workspaceID(root string) string {
 
 func (s *Session) loadConfig(ctx context.Context) (Config, error) {
 	var c Config
+	var broken error
 	b, err := os.ReadFile(s.cfgPath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return Config{}, s.backupConfig(fmt.Errorf("read workspace config: %w", err))
+	switch {
+	case err != nil && !errors.Is(err, os.ErrNotExist):
+		broken = fmt.Errorf("read workspace config: %w", err)
+	case err == nil:
+		if uerr := json.Unmarshal(b, &c); uerr != nil {
+			broken = fmt.Errorf("parse workspace config: %w", uerr)
 		}
-	} else if err := json.Unmarshal(b, &c); err != nil {
-		return Config{}, s.backupConfig(fmt.Errorf("parse workspace config: %w", err))
+	}
+	if broken != nil {
+		// The broken bytes mean nothing, and they are safe only once the file is moved aside (or it vanished on
+		// its own): both continue with the same defaults as a missing file, Bases included.
+		if err := s.backupConfig(broken); err != nil {
+			return Config{}, err
+		}
+		c = Config{}
 	}
 	if c.OldMeSet && c.MeManual == nil {
 		c.MeManual = c.OldMe
@@ -290,8 +295,9 @@ func (s *Session) loadConfig(ctx context.Context) (Config, error) {
 	return c, nil
 }
 
-// backupConfig moves a broken or unreadable config file aside so no later write can overwrite it, and says where. It
-// keeps the original contents even under the same name twice (the second move renames to a free name).
+// backupConfig moves a broken or unreadable config file aside so no later write can overwrite it. Nil means opening
+// may continue: the file was moved, or it vanished before the move. An error means it stays under its name, and the
+// original contents survive a second break in the same second (the second move renames to a free name).
 func (s *Session) backupConfig(reason error) error {
 	stamp := s.opts.Now().Format("20060102-150405")
 	for n := 0; ; n++ {
@@ -307,7 +313,7 @@ func (s *Session) backupConfig(reason error) error {
 			s.mu.Lock()
 			s.configBackup = name
 			s.mu.Unlock()
-			return fmt.Errorf("%s: moved to %s", reason, filepath.Base(name))
+			return nil
 		case errors.Is(err, os.ErrNotExist):
 			return nil // gone before the move: whatever is there now was saved, not broken
 		case errors.Is(err, os.ErrExist):

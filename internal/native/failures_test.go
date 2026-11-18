@@ -16,7 +16,7 @@ func TestStateToastNamesFailedReposOnce(t *testing.T) {
 	queued := func() []string {
 		texts := make([]string, len(h.w.toastTexts))
 		for i, text := range h.w.toastTexts {
-			texts[i] = text(winTr.For(h.w.locale))
+			texts[i] = text(winTr.For("zh-Hans"))
 		}
 		h.w.toastTexts = nil // one toast per change: later calls see only what they queued
 		return texts

@@ -60,9 +60,8 @@ type Workspace struct {
 	layout *layout
 	toasts widgets.Toaster
 
-	// locale is the language the last frame drew; toastTexts are its toasts waiting for a frame (their language is
-	// chosen when one shows). failedRepos names the repos of the last failure toast.
-	locale      string
+	// toastTexts are the window's toasts waiting for a frame: their language is chosen when one shows.
+	// failedRepos names the repos of the last failure toast.
 	toastTexts  []func(*winWords) string
 	failedRepos []string
 
@@ -309,9 +308,8 @@ func (w *Workspace) View(c *ui.Context) {
 		},
 	})
 	widgets.Shortcuts(c, widgets.Shortcut{Mods: ui.Cmd, Key: ui.KeyComma, Do: func() { w.openSettings("") }})
-	w.locale = c.Locale()
 	if len(w.toastTexts) > 0 {
-		t := winTr.For(w.locale)
+		t := winTr.For(c.Locale())
 		for _, text := range w.toastTexts {
 			w.toasts.Error(text(t))
 		}
