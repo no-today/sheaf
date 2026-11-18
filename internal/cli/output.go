@@ -144,6 +144,8 @@ func progress(stage string, flow []session.MergeStep) string {
 		return "in development"
 	case session.StageUnknown:
 		return "unknown"
+	case session.StageReading:
+		return "reading uncommitted changes"
 	}
 	return "awaiting merge"
 }

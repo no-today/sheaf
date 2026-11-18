@@ -102,21 +102,23 @@ func StageRank(stage string) int {
 	switch stage {
 	case StageDev:
 		return 0
-	case StageUnknown:
+	case StageReading:
 		return 1
+	case StageUnknown:
+		return 2
 	case StageLanded:
 		return int(^uint(0)>>1) - 1
 	case StageArchived:
 		return int(^uint(0) >> 1)
 	}
 	if index, ok := MergeStageIndex(stage); ok {
-		return index + 2
+		return index + 3
 	}
 	return int(^uint(0) >> 1)
 }
 
 func StageOrder(flow []MergeStep) []string {
-	order := []string{StageDev, StageUnknown}
+	order := []string{StageDev, StageReading, StageUnknown}
 	for index := range flow {
 		order = append(order, MergeStage(index))
 	}

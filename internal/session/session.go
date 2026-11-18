@@ -229,6 +229,11 @@ func Open(ctx context.Context, root string, opts Options) (*Session, error) {
 	s.state.setPhase()
 	s.ctx, s.cancel = context.WithCancel(s.git(context.Background(), ""))
 	if !opts.NoAutoRefresh {
+		// The scan takes seconds on a big workspace: read the uncommitted counts of the last scan's worktrees meanwhile.
+		// The pass after the scan adds new worktrees and pushes only what changed.
+		if len(s.repos) > 0 {
+			s.Go(func() { s.RefreshDirty(s.ctx, nil, false) })
+		}
 		s.Go(func() { s.Refresh(s.git(s.ctx, "open")) })
 	}
 	return s, nil

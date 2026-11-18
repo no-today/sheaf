@@ -233,7 +233,13 @@ func (p *Page) Event(e view.Event) {
 			p.apply(false)
 		}
 	case view.WorktreesChanged:
-		if p.affectedWorktrees(e.Status.Worktrees) && !p.holdChanges() {
+		if p.affectedWorktrees(e.Status.Worktrees) {
+			if !p.holdChanges() {
+				p.reload()
+				return
+			}
+		} else if p.newUncommitted(e.Status.Read) {
+			// Not a change under the reader: the page was drawn before these files were known.
 			p.reload()
 			return
 		}

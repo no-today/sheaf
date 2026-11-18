@@ -120,6 +120,8 @@ func (p *Page) stageName(w *words, stage string) string {
 		return w.StageArchived
 	case session.StageUnknown:
 		return w.StageUnknown
+	case session.StageReading:
+		return w.StageReading
 	case session.StageLanded:
 		return w.StageLanded
 	}
@@ -379,7 +381,9 @@ func (p *Page) repoStages(c *ui.Context, w *words) {
 
 func (p *Page) stageSteps(c *ui.Context, stage string) {
 	order := session.StageOrder(p.flow)
-	order = slices.DeleteFunc(order, func(step string) bool { return step == session.StageUnknown || step == session.StageArchived })
+	order = slices.DeleteFunc(order, func(step string) bool {
+		return step == session.StageUnknown || step == session.StageReading || step == session.StageArchived
+	})
 	reached := slices.Index(order, stage)
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
 		for i := range order {
@@ -387,7 +391,7 @@ func (p *Page) stageSteps(c *ui.Context, stage string) {
 			switch {
 			case i <= reached && stage == session.StageDev:
 				color = theme.Ticket
-			case stage == session.StageUnknown:
+			case stage == session.StageUnknown || stage == session.StageReading:
 				color = theme.Text4
 			case i <= reached:
 				color = theme.Text

@@ -193,6 +193,7 @@ type words struct {
 	Untrack           string
 	Untracked         string
 	StageDev          string
+	StageReading      string
 	StageUnknown      string
 	StageLanded       string
 	StageArchived     string
@@ -424,6 +425,7 @@ var tr = i18n.New(words{
 	Untrack:           "取消关注",
 	Untracked:         "已取消关注 {id}",
 	StageDev:          "开发中",
+	StageReading:      "读取中",
 	StageUnknown:      "无法确认",
 	StageLanded:       "已合完",
 	StageArchived:     "已归档",
@@ -653,6 +655,7 @@ var tr = i18n.New(words{
 	Untrack:           "Unfollow",
 	Untracked:         "Unfollowed {id}",
 	StageDev:          "In progress",
+	StageReading:      "Reading",
 	StageUnknown:      "Unconfirmed",
 	StageLanded:       "Fully merged",
 	StageArchived:     "Archived",

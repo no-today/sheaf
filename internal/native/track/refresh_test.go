@@ -1,6 +1,7 @@
 package track
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -302,4 +303,53 @@ func TestReviewDefersExternalCommit(t *testing.T) {
 		add, _, loaded := h.p.stream.Stats(0)
 		return loaded && add == 3 && !h.p.pending
 	})
+}
+
+// Opening the app shows the requirement before git status has run in every working directory: a worktree read later
+// must join the page by itself, with no reminder, since nothing the user is reading changed.
+func TestReviewTakesFirstReadUncommittedRepository(t *testing.T) {
+	root := fixture(t)
+	dir := filepath.Join(root, "repo-b")
+	repo := testutil.NewRepoAt(t, dir)
+	repo.Git("checkout", "-q", "-b", "feat-YT1")
+	h := openAt(t, root, "zh-Hans")
+	h.Until("requirement without repo-b", func() bool { return h.p.stream.Loaded() == 1 && !h.TT.FramePending() })
+	// The page was drawn before repo-b's files were known: count them without a push, then deliver the first read.
+	shotWrite(t, filepath.Join(dir, "new.txt"), "new file\n", 0o644)
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	h.H.S.RefreshDirty(gone, []string{dir}, false) // drops the cached file list as the watch would, reads and pushes nothing
+	if _, err := h.H.S.Uncommitted(t.Context(), dir); err != nil {
+		t.Fatal(err)
+	}
+	var path string // the Host's Info is not read again: the app does not either on a worktree push
+	for _, r := range h.H.Inf.Repos {
+		if r.Name == "repo-b" {
+			path = r.Worktrees[0].Path
+		}
+	}
+	h.p.Event(view.WorktreesChanged{Status: session.WorktreeStatus{Read: []string{path}}})
+	h.Until("new repo appears by itself", func() bool {
+		return len(h.p.stream.Files()) == 2 && h.TT.HasText("new.txt") && !h.p.pending && !h.TT.FramePending()
+	})
+	if h.TT.HasText("内容已变化 · 刷新") {
+		t.Fatal("a first read showed the change reminder")
+	}
+}
+
+// A row shown as being read waits for its worktree's first count; a row whose count was there already does not.
+func TestReadingRowReloadsOnFirstRead(t *testing.T) {
+	h := open(t, "zh-Hans")
+	h.Until("requirement", func() bool { return h.p.settled() && !h.TT.FramePending() })
+	path := h.p.rows[0].Worktree
+	if path == "" || h.p.rows[0].Uncommitted < 0 {
+		t.Fatalf("fixture row: %+v", h.p.rows[0])
+	}
+	if h.p.newUncommitted([]string{path}) {
+		t.Error("a counted row reloads again")
+	}
+	h.p.rows[0].Uncommitted = -1
+	if !h.p.newUncommitted([]string{path}) {
+		t.Error("a row being read ignores its first count")
+	}
 }

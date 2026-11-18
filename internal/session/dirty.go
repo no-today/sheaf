@@ -193,6 +193,21 @@ func dirtyFingerprint(ctx context.Context, worktree string, st gitview.WorktreeS
 	return fingerprint, nil
 }
 
+// settleUnread counts path clean after its status run g failed, unless any count of it is known: another run may have
+// stored one meanwhile.
+func (d *dirtyTracker) settleUnread(path string, g uint64) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, ok := d.n[path]; ok {
+		return false
+	}
+	if d.n == nil {
+		d.at, d.n = map[string]uint64{}, map[string]int{}
+	}
+	d.at[path], d.n[path] = g, 0
+	return true
+}
+
 // set records a count read outside a status run (the list of uncommitted files).
 func (d *dirtyTracker) set(path string, n int) {
 	d.mu.Lock()

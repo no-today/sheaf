@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"sheaf/internal/native/theme"
+	"sheaf/internal/session"
 )
 
 func (p *Page) reviewing() bool {
@@ -86,6 +87,31 @@ func (p *Page) affectedWorktrees(paths []string) bool {
 	for _, repo := range p.h.Info().Repos {
 		for _, wt := range repo.Worktrees {
 			if wt.Requirement == req && slices.Contains(paths, wt.Path) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// newUncommitted tells whether worktrees read for the first time may add uncommitted files the shown page lacks, or
+// settle a row it shows as being read.
+// Info's counts are a snapshot taken on index and config changes, older than this read: the reload asks session.
+func (p *Page) newUncommitted(paths []string) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	if p.picked() == wcID {
+		return true
+	}
+	req := p.shownReq()
+	if req == "" {
+		return false
+	}
+	for _, repo := range p.h.Info().Repos {
+		for _, wt := range repo.Worktrees {
+			if wt.Requirement == req && slices.Contains(paths, wt.Path) &&
+				!slices.ContainsFunc(p.rows, func(r session.AggRepo) bool { return r.Worktree == wt.Path && r.Uncommitted >= 0 }) {
 				return true
 			}
 		}

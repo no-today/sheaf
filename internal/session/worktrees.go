@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"sheaf/internal/discover"
 	"sheaf/internal/engine"
@@ -64,9 +65,14 @@ const dirtyParallel = 4
 // meParallel bounds the git config processes of deriveMe.
 const meParallel = 8
 
+// dirtyPushEvery spaces the pushes of one RefreshDirty: a large workspace has dozens of worktrees, and each push makes
+// every view read its state again.
+const dirtyPushEvery = 200 * time.Millisecond
+
 // RefreshDirty runs git status in the given worktrees (all when nil), at most
 // dirtyParallel at a time, and caches the counts for Info. OnWorktrees is told about
-// worktrees whose diff fingerprint changed, or all of them when a write forces a report.
+// worktrees whose diff fingerprint changed, or all of them when a write forces a report,
+// as they are read: the first at once, the rest at most every dirtyPushEvery.
 func (s *Session) RefreshDirty(ctx context.Context, paths []string, always bool) {
 	ctx = s.git(ctx, "dirtyCount")
 	s.dirty.invalidate(paths)
@@ -79,38 +85,83 @@ func (s *Session) RefreshDirty(ctx context.Context, paths []string, always bool)
 		}
 		s.mu.Unlock()
 	}
-	var mu sync.Mutex
-	var changed, read []string
+	push := &dirtyPush{ctx: ctx, every: dirtyPushEvery, now: s.opts.Now, push: s.opts.OnWorktrees}
 	_ = parallel(ctx, len(paths), dirtyParallel, func(i int) {
 		p := paths[i]
 		// A full refresh and a watch-triggered one may overlap: only the newest status may be stored.
 		g := s.dirty.ticket()
 		_, _, epoch := s.dirty.listOf(p)
+		// Unknown would show the directory's stage as being read for good: a failed read counts it clean, as before
+		// counts existed.
+		failed := func() {
+			if ctx.Err() == nil && s.dirty.settleUnread(p, g) {
+				push.add(p, false)
+			}
+		}
 		st, err := gitview.Status(ctx, p)
 		if err != nil {
+			failed()
 			return
 		}
 		fingerprint, err := dirtyFingerprint(ctx, p, st)
 		if err != nil {
+			failed()
 			return
 		}
 		s.dirty.putStatus(p, epoch, st)
 		differs, first, stale := s.dirty.store(p, g, st.Count(), fingerprint)
-		if stale {
-			return
-		}
-		mu.Lock()
-		defer mu.Unlock()
 		switch {
+		case stale:
 		case always || differs:
-			changed = append(changed, p)
+			push.add(p, true)
 		case first:
-			read = append(read, p)
+			push.add(p, false)
 		}
 	})
-	if len(changed)+len(read) > 0 && ctx.Err() == nil && s.opts.OnWorktrees != nil {
-		s.opts.OnWorktrees(WorktreeStatus{Worktrees: changed, Read: read})
+	push.flush()
+}
+
+// dirtyPush gathers the worktrees one RefreshDirty read and hands them to OnWorktrees in batches.
+type dirtyPush struct {
+	ctx   context.Context
+	every time.Duration
+	now   func() time.Time
+	push  func(WorktreeStatus) // nil: nobody listens
+
+	mu      sync.Mutex
+	last    time.Time // of the last push; zero until the first, which goes out at once
+	pending WorktreeStatus
+}
+
+// add records a worktree whose diff changed (changed) or whose status was read for the first time,
+// and pushes what is pending when the last push is long enough ago.
+func (b *dirtyPush) add(path string, changed bool) {
+	b.mu.Lock()
+	if changed {
+		b.pending.Worktrees = append(b.pending.Worktrees, path)
+	} else {
+		b.pending.Read = append(b.pending.Read, path)
 	}
+	due := b.last.IsZero() || b.now().Sub(b.last) >= b.every
+	b.mu.Unlock()
+	if due {
+		b.flush()
+	}
+}
+
+// flush pushes what is pending, unless the refresh was cancelled.
+func (b *dirtyPush) flush() {
+	b.mu.Lock()
+	ws := b.pending
+	b.pending = WorktreeStatus{}
+	if len(ws.Worktrees)+len(ws.Read) > 0 {
+		b.last = b.now()
+	}
+	b.mu.Unlock()
+	if len(ws.Worktrees)+len(ws.Read) == 0 || b.ctx.Err() != nil || b.push == nil {
+		return
+	}
+	b.push(ws)
 }
 
 // worktreeKnown: only worktrees of this workspace may be read.

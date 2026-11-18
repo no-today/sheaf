@@ -9,7 +9,7 @@ import (
 
 func TestStageOrderAndRank(t *testing.T) {
 	flow := []MergeStep{{Name: "qa"}, {Name: "prod"}}
-	want := []string{StageDev, StageUnknown, MergeStage(0), MergeStage(1), StageLanded, StageArchived}
+	want := []string{StageDev, StageReading, StageUnknown, MergeStage(0), MergeStage(1), StageLanded, StageArchived}
 	if got := StageOrder(flow); !slices.Equal(got, want) {
 		t.Fatalf("order=%v want=%v", got, want)
 	}
@@ -18,9 +18,10 @@ func TestStageOrderAndRank(t *testing.T) {
 		rank  int
 	}{
 		{StageDev, 0},
-		{StageUnknown, 1},
-		{MergeStage(0), 2},
-		{MergeStage(1), 3},
+		{StageReading, 1},
+		{StageUnknown, 2},
+		{MergeStage(0), 3},
+		{MergeStage(1), 4},
 		{StageLanded, int(^uint(0)>>1) - 1},
 		{StageArchived, int(^uint(0) >> 1)},
 	} {

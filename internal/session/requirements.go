@@ -297,8 +297,9 @@ type dirtyBranch struct {
 }
 
 type discovered struct {
-	ids   map[string]*found
-	dirty []dirtyBranch
+	ids    map[string]*found
+	dirty  []dirtyBranch
+	unread []dirtyBranch // uncommitted files not counted yet
 }
 
 type discKey struct {
@@ -366,8 +367,11 @@ func (s *Session) discover() (*discovered, *regexp.Regexp, string, error) {
 			if h, ok := r.Ref(w.Branch); ok {
 				at = r.Time[h]
 			}
-			if n := s.dirty.get(w.Path); n > 0 {
+			switch n := s.dirty.get(w.Path); {
+			case n > 0:
 				d.dirty = append(d.dirty, dirtyBranch{r.Name, branch, w.Path, n, at})
+			case n < 0:
+				d.unread = append(d.unread, dirtyBranch{r.Name, branch, w.Path, n, at})
 			}
 			for _, id := range re.FindAllString(branch, -1) {
 				note(id, at)
@@ -467,6 +471,10 @@ func (s *Session) requirements(ctx context.Context) ([]Requirement, []patchJob, 
 		req.Repos = len(repos)
 		if req.Repos == 0 { // tracked, but nothing of it exists yet
 			req.Stage = StageDev
+		}
+		// A branch named after the number whose files are not counted yet may still turn it into one in development.
+		if req.Stage != StageDev && slices.ContainsFunc(d.unread, func(b dirtyBranch) bool { return named(b.branch) }) {
+			req.Stage = StageReading
 		}
 		for _, c := range p.rows { // newest first
 			r := ix.Repos[c.Repo]

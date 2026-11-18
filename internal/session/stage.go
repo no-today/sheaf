@@ -12,6 +12,7 @@ const (
 	StageUAT      = "merge:1"
 	StagePending  = "merge:0"
 	StageDev      = "dev"
+	StageReading  = "reading" // the working directory's uncommitted files are not counted yet
 	StageUnknown  = "unknown"
 	StageArchived = "archived"
 )
@@ -33,6 +34,10 @@ func (s *Session) planStage(a *aggRepo) {
 	a.own, a.noOwn, a.jobs = s.ownCommits(a), false, nil
 	if v.Uncommitted > 0 {
 		v.Stage = StageDev
+		return
+	}
+	if v.Uncommitted < 0 { // its commits alone would tell a stage the uncommitted files may overrule
+		v.Stage = StageReading
 		return
 	}
 	if len(a.own) == 0 {
