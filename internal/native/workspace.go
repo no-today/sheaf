@@ -7,6 +7,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +22,24 @@ import (
 	"sheaf/internal/native/widgets"
 	"sheaf/internal/session"
 )
+
+// winWords are the window's own words (the words of its toasts).
+type winWords struct {
+	// ReposFailed names the repos the last update could not read; ReposFailedN counts them ("{n} 个仓库"|"{n} repositories").
+	ReposFailed, ReposFailedN string
+	// ConfigBackedUp says a broken workspace.json was moved aside, naming the backup file.
+	ConfigBackedUp string
+}
+
+var winTr = i18n.New(winWords{
+	ReposFailed:    "%s读取失败：%s",
+	ReposFailedN:   "{n} 个仓库",
+	ConfigBackedUp: "工作区配置无法读取，已备份为 %s",
+}, winWords{
+	ReposFailed:    "%s failed to read: %s",
+	ReposFailedN:   "{n} repositories",
+	ConfigBackedUp: "Workspace config could not be read; saved as %s",
+})
 
 // Workspace is the state of one workspace window. Every field is read and written on the main thread (the view, and
 // the functions given to update); background work hands its results over through update.
@@ -38,6 +59,12 @@ type Workspace struct {
 	views  map[view.ID]*mounted // the views made so far
 	layout *layout
 	toasts widgets.Toaster
+
+	// locale is the language the last frame drew; toastTexts are its toasts waiting for a frame (their language is
+	// chosen when one shows). failedRepos names the repos of the last failure toast.
+	locale      string
+	toastTexts  []func(*winWords) string
+	failedRepos []string
 
 	infoSeq int             // the newest Info read; older answers are dropped
 	ctx     context.Context // the window's life: cancelled by Close
@@ -88,6 +115,11 @@ func (w *Workspace) Attach(s *session.Session) {
 	w.s = s
 	w.info = s.Info()
 	w.state = w.info.State
+	w.failedRepos = failedNames(w.state.Failed)
+	if b := w.info.ConfigBackup; b != "" {
+		name := filepath.Base(b)
+		w.toastTexts = append(w.toastTexts, func(t *winWords) string { return fmt.Sprintf(t.ConfigBackedUp, name) })
+	}
 	w.layout = openLayout(s.DataDir())
 	w.toasts.Details = func() { w.taskStrip.open = true }
 	w.tasks = s.Tasks()
@@ -108,6 +140,14 @@ func (w *Workspace) State(st session.State) {
 		w.state = st
 		if w.s == nil {
 			return
+		}
+		if names := failedNames(st.Failed); !slices.Equal(names, w.failedRepos) {
+			w.failedRepos = names
+			if len(names) > 0 { // a toast per new failure, not one on every refresh
+				w.toastTexts = append(w.toastTexts, func(t *winWords) string {
+					return fmt.Sprintf(t.ReposFailed, i18n.Plural(t.ReposFailedN, len(names)), strings.Join(names, ", "))
+				})
+			}
 		}
 		if st.Ready && (!was.Ready || was.Commits == 0 && st.Commits > 0) {
 			w.refreshInfo(nil)
@@ -269,8 +309,25 @@ func (w *Workspace) View(c *ui.Context) {
 		},
 	})
 	widgets.Shortcuts(c, widgets.Shortcut{Mods: ui.Cmd, Key: ui.KeyComma, Do: func() { w.openSettings("") }})
+	w.locale = c.Locale()
+	if len(w.toastTexts) > 0 {
+		t := winTr.For(w.locale)
+		for _, text := range w.toastTexts {
+			w.toasts.Error(text(t))
+		}
+		w.toastTexts = nil
+	}
 	w.toasts.View(c)
 	w.layout.changed()
+}
+
+// failedNames lists the repos of a State's failures.
+func failedNames(fs []session.RepoFailure) []string {
+	names := make([]string, len(fs))
+	for i, f := range fs {
+		names[i] = f.Repo
+	}
+	return names
 }
 
 // titleBar is the view's own title, which names what is on screen; the workspace name when the view has none.

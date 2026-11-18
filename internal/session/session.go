@@ -109,11 +109,13 @@ type Session struct {
 	derivedDelay  time.Duration
 	derivedClosed bool
 
-	mu       sync.Mutex
-	cfg      Config
-	meAuto   []MeFrom // what the last derivation found
-	repos    []discover.Repo
-	webBases map[string]string // RepoWebBases, read once
+	mu  sync.Mutex
+	cfg Config
+	// configBackup is where a broken workspace.json was moved aside on open; "" = none.
+	configBackup string
+	meAuto       []MeFrom // what the last derivation found
+	repos        []discover.Repo
+	webBases     map[string]string // RepoWebBases, read once
 	// ignoredDirs are the git dirs and worktrees of the repos the user does not track; their changes are dropped.
 	ignoredDirs []string
 	ignoredWith map[string][]string // ignored repo -> repos it took along (Info.IgnoredWith)
@@ -190,7 +192,16 @@ func Open(ctx context.Context, root string, opts Options) (*Session, error) {
 	s.tasks.changed = opts.OnTasks
 	s.rec = gitcli.Recorder{WriteLog: filepath.Join(opts.DataDir, "workspaces", id, "commands.jsonl"), OnChange: s.cmdChanged, Describe: sourceText, Now: opts.Now, Workspace: root}
 	ctx = s.git(ctx, "open")
-	s.cfg = s.loadConfig(ctx)
+	if cfg, err := s.loadConfig(ctx); err == nil {
+		s.cfg = cfg
+	} else {
+		// A file we could not read or parse stays on disk under its own name; opening continues with defaults only
+		// after the broken bytes are safe in a backup. Never open a file a later write would overwrite.
+		if s.configBackup == "" {
+			return nil, err
+		}
+		s.cfg = Config{Root: root, Bases: map[string]string{}}
+	}
 	if s.cfg.Root != root {
 		s.cfg.Root = root
 		// Existing configurations retain their bytes until an explicit settings write; recent.json locates them meanwhile.
@@ -259,10 +270,15 @@ func workspaceID(root string) string {
 	return hex.EncodeToString(h[:])[:12]
 }
 
-func (s *Session) loadConfig(ctx context.Context) Config {
+func (s *Session) loadConfig(ctx context.Context) (Config, error) {
 	var c Config
-	if b, err := os.ReadFile(s.cfgPath); err == nil {
-		json.Unmarshal(b, &c)
+	b, err := os.ReadFile(s.cfgPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return Config{}, s.backupConfig(fmt.Errorf("read workspace config: %w", err))
+		}
+	} else if err := json.Unmarshal(b, &c); err != nil {
+		return Config{}, s.backupConfig(fmt.Errorf("parse workspace config: %w", err))
 	}
 	if c.OldMeSet && c.MeManual == nil {
 		c.MeManual = c.OldMe
@@ -271,7 +287,35 @@ func (s *Session) loadConfig(ctx context.Context) Config {
 	if c.Bases == nil {
 		c.Bases = map[string]string{}
 	}
-	return c
+	return c, nil
+}
+
+// backupConfig moves a broken or unreadable config file aside so no later write can overwrite it, and says where. It
+// keeps the original contents even under the same name twice (the second move renames to a free name).
+func (s *Session) backupConfig(reason error) error {
+	stamp := s.opts.Now().Format("20060102-150405")
+	for n := 0; ; n++ {
+		name := fmt.Sprintf("%s.broken-%s", s.cfgPath, stamp)
+		if n > 0 {
+			name = fmt.Sprintf("%s-%d", name, n)
+		}
+		if _, err := os.Lstat(name); err == nil {
+			continue // rename would silently replace it: a backup from an earlier break in the same second stays
+		}
+		switch err := os.Rename(s.cfgPath, name); {
+		case err == nil:
+			s.mu.Lock()
+			s.configBackup = name
+			s.mu.Unlock()
+			return fmt.Errorf("%s: moved to %s", reason, filepath.Base(name))
+		case errors.Is(err, os.ErrNotExist):
+			return nil // gone before the move: whatever is there now was saved, not broken
+		case errors.Is(err, os.ErrExist):
+			continue
+		default:
+			return fmt.Errorf("%s: move aside: %w", reason, err)
+		}
+	}
 }
 
 // DataDir is the folder of this workspace's own data.
@@ -385,7 +429,15 @@ func (s *Session) applyScan(ctx context.Context, seq int, repos []discover.Repo,
 				err = s.saveIndex()
 				s.indexUpdated(d.Changed)
 			}
-			s.setState(func(st *State) { st.Ready, st.Commits = true, ix.Commits() })
+			failed := make([]RepoFailure, len(d.Failed))
+			for i, f := range d.Failed {
+				failed[i] = RepoFailure{Repo: f.Repo, Error: f.Err.Error()}
+			}
+			slices.SortFunc(failed, func(a, b RepoFailure) int { return strings.Compare(a.Repo, b.Repo) })
+			s.setState(func(st *State) {
+				st.Ready, st.Commits = true, ix.Commits()
+				st.Failed = failed
+			})
 		}
 	}
 	s.setState(func(st *State) {
@@ -493,7 +545,8 @@ func (s *Session) Info() Info {
 	defer s.mu.Unlock()
 	info := Info{Root: s.Root, Name: s.Name, Me: s.meLocked(), State: s.state, Repos: []RepoInfo{}, MeAuto: append([]MeFrom{}, s.meAuto...), MeManual: []string{},
 		Ignored: append([]string{}, s.cfg.Ignored...), IgnoredWith: map[string][]string{},
-		Release: cmp.Or(s.cfg.Release, DefaultRelease), Master: s.cfg.Master, Requirement: cmp.Or(s.cfg.Requirement, DefaultRequirement), GlabConfig: s.cfg.GlabConfig}
+		Release: cmp.Or(s.cfg.Release, DefaultRelease), Master: s.cfg.Master, Requirement: cmp.Or(s.cfg.Requirement, DefaultRequirement), GlabConfig: s.cfg.GlabConfig,
+		ConfigBackup: s.configBackup}
 	info.MergeFlow = s.mergeFlowLocked()
 	trackedBranch := func(string) string { return "" }
 	if re, err := compileRequirement(s.cfg.Requirement); err == nil && len(s.cfg.Tracked) > 0 {

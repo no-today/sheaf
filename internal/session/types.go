@@ -21,6 +21,14 @@ type State struct {
 	Commits  int    `json:"commits"`
 	Updated  int64  `json:"updated"` // unix seconds of the last finished update; 0 = never
 	Error    string `json:"error,omitempty"`
+	// Failed are the repos whose read failed in the last finished update; the others stay usable.
+	Failed []RepoFailure `json:"failed,omitempty"`
+}
+
+// RepoFailure is one repo the last update could not read.
+type RepoFailure struct {
+	Repo  string `json:"repo"`
+	Error string `json:"error"`
 }
 
 type Info struct {
@@ -48,6 +56,8 @@ type Info struct {
 	Requirement string `json:"requirement"`
 	// GlabConfig is the workspace's own glab configuration directory as typed (~ allowed); "" = the system's glab login.
 	GlabConfig string `json:"glabConfig"`
+	// ConfigBackup is where a broken workspace.json was moved aside on open; "" = the config file was never a problem.
+	ConfigBackup string `json:"configBackup,omitempty"`
 }
 
 // MeFrom is one derived "me" email and where it comes from.

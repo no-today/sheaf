@@ -330,6 +330,12 @@ func (w *Window) indexLine(t *words) (string, bool, bool) {
 	switch {
 	case st.Error != "":
 		return fmt.Sprintf(t.IndexError, st.Error), false, true
+	case len(st.Failed) > 0:
+		repos := make([]string, len(st.Failed))
+		for i, f := range st.Failed {
+			repos[i] = f.Repo
+		}
+		return fmt.Sprintf(t.IndexFailed, i18n.Plural(t.IndexFailedRepos, len(st.Failed)), strings.Join(repos, ", ")), false, true
 	case st.Phase == "ready" && st.Updated > 0:
 		return fmt.Sprintf(t.IndexLine, n, w.ago(t, st.Updated)), false, false
 	case st.Phase == "ready":
