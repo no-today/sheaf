@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,7 +23,7 @@ const (
 )
 
 type Repo struct {
-	Name      string // path relative to the workspace root, slash separated; the root's own name when the root is itself a repo
+	Name      string // slash-separated workspace-relative path, using the root's basename when available
 	Dir       string // main working directory
 	GitDir    string // common git directory
 	Kind      Kind
@@ -79,6 +80,12 @@ func Scan(ctx context.Context, root string) ([]Repo, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+	if i := slices.IndexFunc(repos, func(r Repo) bool { return r.Dir == root }); i >= 0 {
+		base := filepath.Base(root)
+		if !slices.ContainsFunc(repos, func(r Repo) bool { return r.Name == base }) {
+			repos[i].Name = base
+		}
 	}
 	var wg sync.WaitGroup
 	for i := range repos {
@@ -147,9 +154,6 @@ func clean(p string) string {
 }
 
 func rel(root, dir string) string {
-	if dir == root { // the workspace is a single repo
-		return filepath.Base(root)
-	}
 	r, err := filepath.Rel(root, dir)
 	if err != nil {
 		return dir
