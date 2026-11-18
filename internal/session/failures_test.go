@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -71,6 +72,56 @@ func TestRefreshReportsAndClearsUnreadableRepo(t *testing.T) {
 	if st := refresh(); !st.Ready || len(st.Failed) != 0 {
 		t.Fatalf("recovery: %+v", st)
 	}
+}
+
+func TestIncrementalRepoFailures(t *testing.T) {
+	testutil.Isolate(t)
+	root := t.TempDir()
+	for _, name := range []string{"a", "b"} {
+		testutil.NewRepo(t, filepath.Join(root, name)).Commit("one", map[string]string{"f": name})
+	}
+	s, err := Open(t.Context(), root, Options{DataDir: t.TempDir(), CacheDir: t.TempDir(), NoAutoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	move := func(name, from, to string) {
+		t.Helper()
+		if err := os.Rename(filepath.Join(root, name, from), filepath.Join(root, name, to)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(err error, commits int, want ...string) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := s.Info().State
+		var names []string
+		for _, f := range st.Failed {
+			if f.Error == "" {
+				t.Errorf("empty error for %s", f.Repo)
+			}
+			names = append(names, f.Repo)
+		}
+		if !slices.Equal(names, want) || st.Commits != commits {
+			t.Errorf("failed %v, commits %d; want %v, %d", names, st.Commits, want, commits)
+		}
+	}
+	move("b", ".git", "saved")
+	check(s.UpdateRepos(t.Context(), []string{"b"}), 2, "b")
+	move("a", ".git", "saved")
+	check(s.UpdateRepos(t.Context(), []string{"a"}), 2, "a", "b")
+	move("b", "saved", ".git")
+	check(s.UpdateRepos(t.Context(), []string{"b"}), 2, "a")
+	check(s.SetIgnored([]string{"b"}), 1, "a")
+	check(s.SetIgnored([]string{"a"}), 1)
+	check(s.SetIgnored(nil), 1, "a") // adding the still-broken repo back yields no index change
+	move("a", "saved", ".git")
+	check(s.SetIgnored(nil), 2) // retrack retries repos missing from the index
 }
 
 func TestBrokenWorkspaceConfig(t *testing.T) {

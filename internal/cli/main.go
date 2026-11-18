@@ -186,7 +186,8 @@ func run(ctx context.Context, name string, o options, e *envelope, stderr io.Wri
 	e.Workspace = workspace
 	e.DataDir = data
 	e.ConfigFile = filepath.Join(data, "workspaces", session.WorkspaceID(workspace), "workspace.json")
-	write := o.command == "track" || o.command == "untrack" || o.command == "archive" || o.command == "unarchive" || o.command == "config" && o.action == "apply"
+	applyConfig := o.command == "config" && o.action == "apply"
+	write := o.command == "track" || o.command == "untrack" || o.command == "archive" || o.command == "unarchive" || applyConfig
 	unlock, lockErr := appdir.TryLock(ctx, data, session.WorkspaceID(workspace))
 	if lockErr != nil && (!errors.Is(lockErr, appdir.ErrBusy) || write) {
 		if errors.Is(lockErr, appdir.ErrBusy) {
@@ -197,9 +198,8 @@ func run(ctx context.Context, name string, o options, e *envelope, stderr io.Wri
 	if unlock != nil {
 		defer unlock()
 	}
-	// Open does not surface malformed or unreadable saved configuration.
-	// An explicit replacement must still be able to recover malformed JSON.
-	if !(o.command == "config" && o.action == "apply") {
+	// Only an explicit replacement can proceed with an unreadable saved config.
+	if !applyConfig {
 		if b, err := os.ReadFile(e.ConfigFile); err == nil {
 			var cfg session.Config
 			if err := json.Unmarshal(b, &cfg); err != nil {
@@ -210,6 +210,7 @@ func run(ctx context.Context, name string, o options, e *envelope, stderr io.Wri
 		}
 	}
 	s, err := session.Open(ctx, workspace, session.Options{DataDir: data, CacheDir: cache, NoAutoRefresh: true, ReuseScan: !o.rescan,
+		KeepBrokenConfig: applyConfig,
 		CacheWrite: func(write func()) {
 			if unlock != nil {
 				write()

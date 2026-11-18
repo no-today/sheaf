@@ -170,8 +170,13 @@ func (s *Session) UpdateRepos(ctx context.Context, names []string) error {
 		s.indexGen++
 		s.mu.Unlock()
 		err = s.saveIndex()
-		s.setState(func(st *State) { st.Commits, st.Updated = ix.Commits(), s.opts.Now().Unix() })
 	}
+	s.setState(func(st *State) {
+		if len(d.Changed) > 0 {
+			st.Commits, st.Updated = ix.Commits(), s.opts.Now().Unix()
+		}
+		st.Failed = mergeFailures(st.Failed, repos, names, d)
+	})
 	if len(paths) > 0 {
 		s.Go(func() { s.RefreshDirty(s.ctx, paths, false) })
 	}

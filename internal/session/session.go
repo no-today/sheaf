@@ -76,6 +76,8 @@ type Options struct {
 	GitLimit *GitLimit
 	// NoAutoRefresh leaves refreshing to the caller instead of starting it in Open.
 	NoAutoRefresh bool
+	// KeepBrokenConfig leaves an unreadable config in place until an explicit replacement is saved.
+	KeepBrokenConfig bool
 	// ReuseScan reloads known repositories instead of walking the workspace when a scan cache exists.
 	ReuseScan bool
 	// CacheWrite synchronously invokes write when cache writes are allowed, or skips it.
@@ -192,7 +194,7 @@ func Open(ctx context.Context, root string, opts Options) (*Session, error) {
 	s.tasks.changed = opts.OnTasks
 	s.rec = gitcli.Recorder{WriteLog: filepath.Join(opts.DataDir, "workspaces", id, "commands.jsonl"), OnChange: s.cmdChanged, Describe: sourceText, Now: opts.Now, Workspace: root}
 	ctx = s.git(ctx, "open")
-	cfg, err := s.loadConfig(ctx) // a broken file is moved aside inside; an error means it could not be
+	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -278,10 +280,10 @@ func (s *Session) loadConfig(ctx context.Context) (Config, error) {
 		}
 	}
 	if broken != nil {
-		// The broken bytes mean nothing, and they are safe only once the file is moved aside (or it vanished on
-		// its own): both continue with the same defaults as a missing file, Bases included.
-		if err := s.backupConfig(broken); err != nil {
-			return Config{}, err
+		if !s.opts.KeepBrokenConfig {
+			if err := s.backupConfig(broken); err != nil {
+				return Config{}, err
+			}
 		}
 		c = Config{}
 	}
@@ -435,14 +437,9 @@ func (s *Session) applyScan(ctx context.Context, seq int, repos []discover.Repo,
 				err = s.saveIndex()
 				s.indexUpdated(d.Changed)
 			}
-			failed := make([]RepoFailure, len(d.Failed))
-			for i, f := range d.Failed {
-				failed[i] = RepoFailure{Repo: f.Repo, Error: f.Err.Error()}
-			}
-			slices.SortFunc(failed, func(a, b RepoFailure) int { return strings.Compare(a.Repo, b.Repo) })
 			s.setState(func(st *State) {
 				st.Ready, st.Commits = true, ix.Commits()
-				st.Failed = failed
+				st.Failed = mergeFailures(nil, repos, nil, d)
 			})
 		}
 	}
@@ -455,6 +452,34 @@ func (s *Session) applyScan(ctx context.Context, seq int, repos []discover.Repo,
 		}
 	})
 	return err
+}
+
+func mergeFailures(previous []RepoFailure, tracked []discover.Repo, requested []string, d index.Delta) []RepoFailure {
+	if len(previous) == 0 && len(d.Failed) == 0 {
+		return nil
+	}
+	byName := make(map[string]RepoFailure, len(previous))
+	for _, f := range previous {
+		byName[f.Repo] = f
+	}
+	for _, name := range requested {
+		delete(byName, name)
+	}
+	// UpdateSome also retries repos missing from the index. A successful retry appears in Changed.
+	for _, name := range d.Changed {
+		delete(byName, name)
+	}
+	for _, f := range d.Failed {
+		byName[f.Repo] = RepoFailure{Repo: f.Repo, Error: f.Err.Error()}
+	}
+	var failures []RepoFailure
+	for _, r := range tracked {
+		if f, ok := byName[r.Name]; ok {
+			failures = append(failures, f)
+		}
+	}
+	slices.SortFunc(failures, func(a, b RepoFailure) int { return strings.Compare(a.Repo, b.Repo) })
+	return failures
 }
 
 // freshenLocked puts into scan number seq the worktrees UpdateRepos read after it began (s.mu held), and forgets the
