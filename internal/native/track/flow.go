@@ -303,26 +303,27 @@ func (p *Page) mrResult(c *ui.Context, w *words, r session.AggRepo, mr session.M
 	case toneBad:
 		color = theme.DangerTxt
 	}
-	ui.Column(c).Shrink(1).MinWidth(0).FontSize(theme.FSSmall).FontFeatures("tnum").Children(func() {
-		ui.Row(c).Gap(4).AlignItems(ui.Center).MinWidth(0).Children(func() {
-			if cell.Tone == toneOK {
-				ui.Icon(c, theme.IconCheck).FontSize(theme.IconS).TextColor(color).Shrink(0)
+	ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(1).MinWidth(0).FontSize(theme.FSSmall).FontFeatures("tnum").Children(func() {
+		if cell.Tone == toneOK {
+			ui.Icon(c, theme.IconCheck).FontSize(theme.IconS).TextColor(color).Shrink(0)
+		}
+		if cell.URL != "" {
+			b := ui.ButtonBase(c.Key("res" + r.Key)).Label(cell.Text).Cursor(ui.CursorPointer).Tooltip(cell.Title)
+			b.Children(func() { ui.Text(c, cell.Text).TextColor(color).SingleLine().Underline() })
+			if b.Clicked() {
+				c.OpenURL(cell.URL)
 			}
-			if cell.URL != "" {
-				b := ui.ButtonBase(c.Key("res" + r.Key)).Label(cell.Text).Cursor(ui.CursorPointer).Tooltip(cell.Title)
-				b.Children(func() { ui.Text(c, cell.Text).TextColor(color).SingleLine().Underline() })
-				if b.Clicked() {
-					c.OpenURL(cell.URL)
-				}
-				return
-			}
-			t := ui.Text(c, cell.Text).TextColor(color).SingleLine()
-			if cell.Title != "" {
-				t.Tooltip(cell.Title)
-			}
-		})
+			return
+		}
+		t := ui.Text(c, cell.Text).TextColor(color).SingleLine()
 		if cell.Reason != "" {
+			t.Shrink(0)
 			ui.Text(c, cell.Reason).TextColor(theme.Text4).SingleLine().Shrink(1).MinWidth(0).Tooltip(cell.Title)
+		} else if cell.Title != "" {
+			t.Tooltip(cell.Title)
+		}
+		if cell.Tone == toneBad {
+			widgets.CopyError(c.Key("copy-error-"+r.Key), mr.Error)
 		}
 	})
 }

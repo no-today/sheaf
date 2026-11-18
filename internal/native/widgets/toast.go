@@ -94,6 +94,7 @@ func (t *Toaster) View(c *ui.Context) {
 						Children(func() { ui.Text(c, toast.Action).SingleLine() })
 				}
 				if toast.Type == "error" {
+					CopyError(c.Key("copy-error"), toast.Title)
 					b := parts.CloseButton().Size(20, 20).Center().Radius(theme.RButton).Shrink(0).
 						Label(i18n.Of(c).Close).Tooltip(i18n.Of(c).Close).Transition(FadeColors)
 					if b.Hovered() {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"sheaf/internal/native/i18n"
 	"sheaf/internal/native/theme"
 	"sheaf/internal/session"
 )
@@ -48,8 +49,11 @@ func TestTaskStrip(t *testing.T) {
 						{Name: "settle-web · feat/settle", State: session.TaskWaiting},
 					}},
 				{ID: 4, Kind: session.TaskIndex, State: session.TaskRunning, Done: 12, Total: 35, Started: now.Add(-2 * time.Second)},
-				{ID: 5, Kind: session.TaskMR, Subject: "YT-2841", State: session.TaskDone, Done: 1, Total: 1, Started: now.Add(-90 * time.Second), Ended: now.Add(-80 * time.Second),
-					Rows: []session.TaskRow{{Name: "pay-core · feat/settle", State: session.TaskDone, Note: "created", URL: "https://gitlab.example.com/pay/core/-/merge_requests/12"}}},
+				{ID: 5, Kind: session.TaskMR, Subject: "YT-2841", State: session.TaskDone, Done: 2, Total: 2, Started: now.Add(-90 * time.Second), Ended: now.Add(-80 * time.Second),
+					Rows: []session.TaskRow{
+						{Name: "pay-core · feat/settle", State: session.TaskDone, Note: "created", URL: "https://gitlab.example.com/pay/core/-/merge_requests/12"},
+						{Name: "wms-server · feat/settle", State: session.TaskDone, Note: "created", URL: "https://gitlab.example.com/wms/server/-/merge_requests/34"},
+					}},
 				{ID: 2, Kind: session.TaskFetch, Subject: "YT-2841", State: session.TaskDone, Done: 2, Total: 2, Started: now.Add(-3 * time.Minute), Ended: now.Add(-2 * time.Minute),
 					Rows: []session.TaskRow{
 						{Name: "pay-core", State: session.TaskDone, Note: "fetched"},
@@ -81,11 +85,25 @@ func TestTaskStrip(t *testing.T) {
 				t.Errorf("the task list is not above the corner: stop %+v, corner %+v", panel, strip)
 			}
 			shot(t, tt, "tasks-panel-"+locale)
-			if err := tt.Click(w.Created + " MR !12"); err != nil {
+			if err := tt.Click(w.Created + " MR !34"); err != nil {
 				t.Fatal(err)
 			}
-			if got := tt.OpenedURLs(); len(got) != 1 || got[0] != "https://gitlab.example.com/pay/core/-/merge_requests/12" {
+			if got := tt.OpenedURLs(); len(got) != 1 || got[0] != "https://gitlab.example.com/wms/server/-/merge_requests/34" {
 				t.Errorf("clicking the MR row opened %q", got)
+			}
+			if err := tt.Click(i18n.Common.For(locale).CopyError); err != nil {
+				t.Fatal(err)
+			}
+			if got := tt.Clipboard(); got != "fatal: could not read from remote repository" {
+				t.Errorf("copying the failed row put %q on the clipboard", got)
+			}
+			tasks[3].Error = "open workspace: disk full"
+			tt.Frame()
+			if err := tt.Click(i18n.Common.For(locale).CopyError); err != nil {
+				t.Fatal(err)
+			}
+			if got := tt.Clipboard(); got != "open workspace: disk full" {
+				t.Errorf("copying the task error put %q on the clipboard", got)
 			}
 		})
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"sheaf/internal/native/i18n"
 	"sheaf/internal/native/theme"
 )
 
@@ -63,6 +64,17 @@ func FlatButton(c *ui.Context, label string, content func()) ui.Element {
 	face(b)
 	b.Children(content)
 	return b
+}
+
+func CopyError(c *ui.Context, text string) {
+	if text == "" {
+		return
+	}
+	button := iconButton(c, i18n.Of(c).CopyError).Border(0, ui.Transparent).TextColor(theme.Text3)
+	button.Children(func() { ui.Icon(c, theme.IconCopy).FontSize(theme.IconS) })
+	if button.Clicked() {
+		c.WriteClipboard(text)
+	}
 }
 
 // IconButton is a 24×24 button showing only an icon (.icon-btn), with label as its tooltip and accessible name.

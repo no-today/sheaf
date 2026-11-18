@@ -235,7 +235,7 @@ func TestBusy(t *testing.T) {
 func TestBatchStopsBeforeARow(t *testing.T) {
 	var done []int
 	p := Progress{Start: func(i int) bool { return i == 0 }, Done: func(i int) { done = append(done, i) }}
-	res := RunMR(context.Background(), []MRRow{{Key: "a", Missing: true}, {Key: "b"}, {Key: "c"}}, p)
+	res := slices.Collect(RunMR(t.Context(), []MRRow{{Key: "a", Missing: true}, {Key: "b"}, {Key: "c"}}, p))
 	if res[0].Skip == SkipStopped {
 		t.Errorf("the first row did not run: %+v", res[0])
 	}
@@ -250,5 +250,18 @@ func TestBatchStopsBeforeARow(t *testing.T) {
 	rows := []UpdateRow{{Repo: "r", Dir: "/nowhere", Branch: "x"}}
 	if r := RunUpdate(context.Background(), rows, Progress{Start: func(int) bool { return false }})[0]; r.Outcome != Skipped || r.Skip != SkipStopped {
 		t.Errorf("update row ran after the stop: %+v", r)
+	}
+}
+
+func TestMRReportsBeforeStartingNextRow(t *testing.T) {
+	reported := 0
+	progress := Progress{Start: func(index int) bool {
+		if reported != index {
+			t.Errorf("starting row %d with %d results reported", index, reported)
+		}
+		return true
+	}}
+	for range RunMR(t.Context(), []MRRow{{Dir: t.TempDir()}, {Dir: t.TempDir()}}, progress) {
+		reported++
 	}
 }

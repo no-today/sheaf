@@ -5,6 +5,7 @@ package gitops
 import (
 	"context"
 	"errors"
+	"iter"
 	"strings"
 
 	"sheaf/internal/gitcli"
@@ -120,19 +121,23 @@ type MRResult struct {
 }
 
 // RunMR opens the rows' merge or pull requests one after another.
-func RunMR(ctx context.Context, rows []MRRow, p Progress) []MRResult {
-	out := make([]MRResult, 0, len(rows))
-	stopped := false
-	for i, r := range rows {
-		stopped = stopped || !p.start(i)
-		if stopped {
-			out = append(out, MRResult{Key: r.Key, Tool: r.Tool, Missing: r.Missing, Outcome: Skipped, Skip: SkipStopped})
-		} else {
-			out = append(out, runMR(ctx, r))
+func RunMR(ctx context.Context, rows []MRRow, p Progress) iter.Seq[MRResult] {
+	return func(yield func(MRResult) bool) {
+		stopped := false
+		for i, row := range rows {
+			stopped = stopped || !p.start(i)
+			var result MRResult
+			if stopped {
+				result = MRResult{Key: row.Key, Tool: row.Tool, Missing: row.Missing, Outcome: Skipped, Skip: SkipStopped}
+			} else {
+				result = runMR(ctx, row)
+			}
+			p.done(i)
+			if !yield(result) {
+				return
+			}
 		}
-		p.done(i)
 	}
-	return out
 }
 
 func runMR(ctx context.Context, r MRRow) MRResult {

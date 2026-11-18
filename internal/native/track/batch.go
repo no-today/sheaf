@@ -173,7 +173,7 @@ func (p *Page) runSheet() {
 	if len(keys) == 0 {
 		return
 	}
-	sh.busy, sh.open = true, false // it runs as a task: the corner of the status bar follows it
+	sh.busy, sh.open = true, false
 	// The rows keep their order while the run changes the counts the server sorts by.
 	p.frozen = make([]string, len(p.rows))
 	for i, r := range p.rows {
@@ -199,6 +199,9 @@ func (p *Page) runSheet() {
 			})
 		}()
 		return
+	}
+	if showTasks := p.h.Toasts().Details; showTasks != nil {
+		showTasks()
 	}
 	go func() {
 		run, err := s.CreateMR(ctx, session.MRInput{Agg: in, Rows: keys, Subject: subject})
@@ -283,7 +286,8 @@ func (p *Page) sheetPopover(c *ui.Context) {
 							}
 						}
 					}
-					how, brief, route := r.how(w), r.how(w), cmpOr(r.route, r.branch)
+					how, route := r.how(w), cmpOr(r.route, r.branch)
+					brief := how
 					if r.brief != nil {
 						brief = r.brief(w)
 					}

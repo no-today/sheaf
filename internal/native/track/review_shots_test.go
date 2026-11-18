@@ -219,6 +219,27 @@ esac
 		return h.p.sheet == nil && h.p.mrRun != nil && h.p.mrRun.Created == 2 && !h.p.aggBusy && !h.p.filesBusy && h.TT.HasText("MR 已处理")
 	})
 	batchSheetShots(h, "track-create-mr-result", 1400)
+	h.p.startMR()
+	h.Until("second MR plan", func() bool { return h.p.sheet != nil && h.p.sheet.open })
+	shotClick(t, h, fill(zh.PlanPick, "repo", "ahead", "branch", "feat-YT1"))
+	sh := h.p.sheet
+	opened := false
+	h.H.Toaster.Details = func() { opened = true }
+	shotClick(t, h, "创建 1 个 MR")
+	if sh.open || !opened {
+		t.Fatal("confirming the MR must close the dialog and show the task list")
+	}
+	h.Until("selected MR result", func() bool { return h.p.sheet == nil && h.p.mrRun.Created == 1 })
+	var latest session.Task
+	for _, task := range h.H.S.Tasks() {
+		if task.Kind == session.TaskMR {
+			latest = task
+			break
+		}
+	}
+	if latest.Total != 1 || latest.Done != 1 || len(latest.Rows) != 1 || latest.Rows[0].Name != "synced · feat-YT1" || latest.Rows[0].State != session.TaskDone {
+		t.Fatalf("task after unchecking ahead and skipping lone = %+v", latest)
+	}
 	t.Run("github", mrGitHubReviewShots)
 }
 

@@ -168,11 +168,14 @@ func taskItem(c *ui.Context, w *taskWords, s *session.Session, t session.Task, i
 			bar(c, 0, float32(t.Done)/float32(t.Total)).FillWidth()
 		}
 		if t.Error != "" {
-			ui.Text(c, t.Error).FontSize(theme.FSSmall).TextColor(theme.DangerTxt).Selectable().Wrap()
+			ui.Row(c).Gap(4).AlignItems(ui.Start).Children(func() {
+				ui.Text(c, t.Error).Grow(1).Shrink(1).MinWidth(0).FontSize(theme.FSSmall).TextColor(theme.DangerTxt).Selectable().Wrap()
+				widgets.CopyError(c.Key("task"), t.Error)
+			})
 		}
 		for i, r := range t.Rows {
 			if r.URL != "" {
-				linkRow(c.Key(i), w, r)
+				linkRow(c.Key(i), w, i, r)
 				continue
 			}
 			ui.Row(c).Height(22).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -181,18 +184,21 @@ func taskItem(c *ui.Context, w *taskWords, s *session.Session, t session.Task, i
 				ui.Spacer(c)
 				note, color := rowNote(w, r)
 				ui.Text(c, note).FontSize(theme.FSSmall).TextColor(color).SingleLine().Shrink(2).MinWidth(0).Tooltip(r.Note)
+				if r.State == session.TaskFailed {
+					widgets.CopyError(c.Key(i), r.Note)
+				}
 			})
 		}
 	})
 }
 
 // linkRow is a row that created or found a merge or pull request: the whole row opens it in the browser.
-func linkRow(c *ui.Context, w *taskWords, r session.TaskRow) {
+func linkRow(c *ui.Context, w *taskWords, i int, r session.TaskRow) {
 	note, _ := rowNote(w, r)
 	if ref := session.MRRef(r.URL); ref != "" {
 		note += " " + ref
 	}
-	b := ui.ButtonBase(c.Key("link")).Height(22).Gap(8).AlignItems(ui.Center).Margin(0, -6, 0, -6).PaddingX(6).
+	b := ui.ButtonBase(c.Key(fmt.Sprintf("mr link %d %s", i, r.URL))).Height(22).Gap(8).AlignItems(ui.Center).Margin(0, -6, 0, -6).PaddingX(6).
 		Cursor(ui.CursorPointer).Label(r.Name + " " + note).Tooltip(r.URL)
 	hot := b.Hovered()
 	if hot {

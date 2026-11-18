@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -141,7 +142,7 @@ func TestRunMR(t *testing.T) {
 				}
 				t.Setenv(k, v)
 			}
-			res := RunMR(context.Background(), []MRRow{tc.row(repo.Dir)}, Progress{})
+			res := slices.Collect(RunMR(t.Context(), []MRRow{tc.row(repo.Dir)}, Progress{}))
 			r := res[0]
 			if r.Outcome != tc.outcome || r.Pushed != tc.pushed || r.Auth != tc.auth {
 				t.Fatalf("result %+v", r)

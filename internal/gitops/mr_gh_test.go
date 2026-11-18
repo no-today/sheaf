@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -75,7 +76,7 @@ exit ${FAKE_GH_EXIT:-0}
 				}
 			}
 			var rec gitcli.Recorder
-			res := RunMR(gitcli.WithRecorder(context.Background(), &rec), []MRRow{row}, Progress{})[0]
+			res := slices.Collect(RunMR(gitcli.WithRecorder(t.Context(), &rec), []MRRow{row}, Progress{}))[0]
 			if res.Tool != "gh" || res.Outcome != tc.outcome || res.Pushed != tc.push || res.Auth != tc.auth {
 				t.Fatalf("result %+v", res)
 			}

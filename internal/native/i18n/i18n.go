@@ -47,6 +47,7 @@ type Words struct {
 	OK        string
 	Settings  string
 	Details   string // a toast's button to the task list
+	CopyError string
 	Log       string
 	Track     string // the requirement page
 	Diff      string // windows
@@ -70,6 +71,7 @@ var Common = New(Words{
 	OK:        "确定",
 	Settings:  "设置",
 	Details:   "详情",
+	CopyError: "复制错误信息",
 	Log:       "提交记录",
 	Track:     "需求",
 	Diff:      "改动",
@@ -90,6 +92,7 @@ var Common = New(Words{
 	OK:        "OK",
 	Settings:  "Settings",
 	Details:   "Details",
+	CopyError: "Copy error",
 	Log:       "Commits",
 	Track:     "Requirements",
 	Diff:      "Changes",

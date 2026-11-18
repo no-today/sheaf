@@ -74,6 +74,12 @@ func TestToastLongMessageKeepsActionsVisible(t *testing.T) {
 				tt.Advance(100 * time.Millisecond)
 				widgetShot(t, tt, fmt.Sprintf("toast-long-error-%s-%d", locale, width))
 				close := planRect(t, tt, w.Close)
+				if err := tt.Click(w.CopyError); err != nil {
+					t.Fatal(err)
+				}
+				if got := tt.Clipboard(); got != message {
+					t.Fatalf("clipboard = %q, want %q", got, message)
+				}
 				if close.X < 20 || close.X+close.W > float32(width)-20 || close.Y+close.H > 580 {
 					t.Fatalf("close button escaped: %+v", close)
 				}

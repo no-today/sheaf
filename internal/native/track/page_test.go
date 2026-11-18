@@ -106,6 +106,32 @@ func TestFailedRowsShowTheirReasonInline(t *testing.T) {
 	if !h.TT.HasText("MR 已处理") {
 		t.Errorf("no summary bar; texts %q", h.TT.Texts())
 	}
+	h.Shot("track-mr-error-copy-zh-Hans")
+	status, hasStatus := h.TT.Find("✕ 失败")
+	reason, hasReason := h.TT.Find("fatal: no such project")
+	copyButton, hasCopy := h.TT.Find("复制错误信息")
+	if !hasStatus || !hasReason || !hasCopy || status.X+status.W > reason.X || reason.X+reason.W > copyButton.X ||
+		reason.Y >= status.Y+status.H || status.Y >= reason.Y+reason.H {
+		t.Errorf("failed result is not on one line: status %+v, reason %+v, copy %+v", status, reason, copyButton)
+	}
+	var statusHint, reasonHint string
+	for _, element := range h.TT.AccessAll() {
+		switch element.Name {
+		case "✕ 失败":
+			statusHint = element.Description
+		case "fatal: no such project":
+			reasonHint = element.Description
+		}
+	}
+	if statusHint != "" || reasonHint != h.p.mrRun.Rows[0].Error {
+		t.Errorf("tooltips: status %q, reason %q", statusHint, reasonHint)
+	}
+	if err := h.TT.Click("复制错误信息"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := h.TT.Clipboard(), h.p.mrRun.Rows[0].Error; got != want {
+		t.Errorf("clipboard = %q, want %q", got, want)
+	}
 }
 
 func TestPickingTheCompareTargetSavesIt(t *testing.T) {

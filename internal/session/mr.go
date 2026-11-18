@@ -146,7 +146,8 @@ func (s *Session) CreateMR(ctx context.Context, in MRInput) (MRRun, error) {
 		ctx = gitview.GlabConfig(ctx, glabCfg)
 	}
 	pushed := false
-	for i, r := range gitops.RunMR(ctx, rows, gitops.Progress{Start: task.begin}) {
+	for r := range gitops.RunMR(ctx, rows, gitops.Progress{Start: task.begin}) {
+		i := len(run.Rows)
 		task.rowURL(i, batchState(r.Outcome), cmp.Or(r.Error, r.Skip, r.Outcome), r.URL)
 		run.Rows = append(run.Rows, MRRow{Tool: r.Tool, Missing: r.Missing, Key: r.Key, Repo: views[i].Repo, Branch: rows[i].Source, Target: rows[i].Target,
 			Outcome: r.Outcome, Skip: r.Skip, Pushed: r.Pushed, URL: r.URL, Auth: r.Auth, Error: r.Error})
