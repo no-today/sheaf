@@ -16,10 +16,17 @@ import (
 // Progress reports how many repos are done during Build or Update.
 type Progress func(done, total int)
 
+// RepoError names one repo whose read failed.
+type RepoError struct {
+	Repo string
+	Err  error
+}
+
 // Delta says what an Update changed.
 type Delta struct {
-	Changed []string // repo names re-read (new, changed or removed)
-	Added   int      // commits added
+	Changed []string    // repo names re-read (new, changed or removed)
+	Added   int         // commits added
+	Failed  []RepoError // repos whose read failed: their old history is kept, or they are left out on a first build
 }
 
 func Build(ctx context.Context, repos []discover.Repo, progress Progress) (*Index, error) {
@@ -87,6 +94,7 @@ func update(ctx context.Context, old *Index, repos []discover.Repo, only map[str
 	for k, r := range out {
 		if errs[k] != nil {
 			// one broken repo must not hide the others: keep its old history if any
+			d.Failed = append(d.Failed, RepoError{Repo: repos[k].Name, Err: errs[k]})
 			if p := prev[repos[k].GitDir]; p != nil {
 				r = p
 			} else {

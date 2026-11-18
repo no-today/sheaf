@@ -289,6 +289,9 @@ func run(ctx context.Context, name string, o options, e *envelope, stderr io.Wri
 		e.Problems = append(e.Problems, s.Settle(ctx, nil)...)
 	}
 	info := s.Info()
+	for _, f := range info.State.Failed { // a repo whose read failed still leaves the others queryable
+		e.Problems = append(e.Problems, session.Problem{Code: session.ProblemGitRead, Repo: f.Repo, Detail: f.Error})
+	}
 	e.Scope.Excluded = append([]string{}, info.Ignored...)
 	for _, repo := range info.Repos {
 		e.Scope.Repositories = append(e.Scope.Repositories, repo.Name)
