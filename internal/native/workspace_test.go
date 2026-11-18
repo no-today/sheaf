@@ -252,3 +252,26 @@ func TestSmokeFromEnv(t *testing.T) {
 		})
 	}
 }
+
+// The views read worktree counts from Info (the 未提交 count in the rail): a worktree push must refresh it, not only
+// the next index or config change.
+func TestWorktreePushRefreshesInfo(t *testing.T) {
+	h := open(t)
+	h.until("first counts", func() bool { return !h.tt.FramePending() })
+	dir := filepath.Join(h.s.Root, "repo-a")
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.s.RefreshDirty(t.Context(), []string{dir}, false)
+	h.w.Worktrees(session.WorktreeStatus{Read: []string{dir}}) // the harness does not wire OnWorktrees
+	h.until("count in Info", func() bool {
+		for _, r := range h.w.info.Repos {
+			for _, wt := range r.Worktrees {
+				if wt.Dirty > 0 {
+					return !h.tt.FramePending()
+				}
+			}
+		}
+		return false
+	})
+}

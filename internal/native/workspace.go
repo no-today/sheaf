@@ -179,6 +179,7 @@ func (w *Workspace) Worktrees(ws session.WorktreeStatus) {
 	w.update(func() {
 		if w.s != nil {
 			w.notify(view.WorktreesChanged{Status: ws})
+			w.refreshInfo(nil) // the counts in Info; in the background, so the views are not told late
 		}
 	})
 }
