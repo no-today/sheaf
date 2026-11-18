@@ -33,7 +33,7 @@ type words struct {
 	BaselineOnly, BaselineOnlyRepo                                                               string
 
 	IndexLine, IndexNoTime, IndexUpdating, IndexProgress, IndexError, IndexSub string
-	// IndexFailed names the repos the last update could not read; IndexFailedRepos counts them ("{n} 个仓库"|"{n} repositories").
+	// IndexFailed names the repos the last update could not read; IndexFailedRepos counts them ("{n} 个仓库" | "{n} repository|{n} repositories").
 	IndexFailed                                                                     string
 	IndexFailedRepos                                                                string
 	Refresh, Refreshing, Refreshed                                                  string
@@ -282,7 +282,7 @@ var tr = i18n.New(words{
 	IndexProgress:    "Reading %d / %d",
 	IndexError:       "Reading failed: %s",
 	IndexFailed:      "%s failed to read: %s",
-	IndexFailedRepos: "{n} repositories",
+	IndexFailedRepos: "{n} repository|{n} repositories",
 	IndexSub:         "%d repos, %d working dirs; updates on change",
 	Refresh:          "Refresh",
 	Refreshing:       "Refreshing…",

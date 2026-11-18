@@ -25,7 +25,7 @@ import (
 
 // winWords are the window's own words (the words of its toasts).
 type winWords struct {
-	// ReposFailed names the repos the last update could not read; ReposFailedN counts them ("{n} 个仓库"|"{n} repositories").
+	// ReposFailed names the repos the last update could not read; ReposFailedN counts them ("{n} 个仓库" | "{n} repository|{n} repositories").
 	ReposFailed, ReposFailedN string
 	// ConfigBackedUp says a broken workspace.json was moved aside, naming the backup file.
 	ConfigBackedUp string
@@ -37,7 +37,7 @@ var winTr = i18n.New(winWords{
 	ConfigBackedUp: "工作区配置无法读取，已备份为 %s",
 }, winWords{
 	ReposFailed:    "%s failed to read: %s",
-	ReposFailedN:   "{n} repositories",
+	ReposFailedN:   "{n} repository|{n} repositories",
 	ConfigBackedUp: "Workspace config could not be read; saved as %s",
 })
 
