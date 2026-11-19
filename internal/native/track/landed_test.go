@@ -166,14 +166,15 @@ func TestFoldedArchivedGroupStillShowsSearchHitsAndTheShownRequirement(t *testin
 	h := openArchived(t, "en-US")
 	h.p.find = "1002"
 	h.TT.Frame()
-	if !h.TT.HasText("LAND-1002") || h.TT.HasText("LAND-1003") {
+	// Rows are matched by their whole label: the detail pane may show the first requirement it opened by its ID.
+	if !h.TT.HasText("LAND-1002 landed 2") || h.TT.HasText("LAND-1003 landed 3") {
 		t.Errorf("a search shows the landed hits only: %q", h.TT.Texts())
 	}
 	h.p.find = ""
 	h.p.chooseReq(session.Requirement{ID: "LAND-1003"})
 	h.Until("the landed requirement", func() bool { return h.p.shownReq() == "LAND-1003" })
 	h.TT.Frame()
-	if !h.TT.HasText("LAND-1003") || h.TT.HasText("LAND-1001") {
+	if !h.TT.HasText("LAND-1003 landed 3") || h.TT.HasText("LAND-1001 landed 1") {
 		t.Errorf("the requirement on screen stays in the folded group, the others do not: %q", h.TT.Texts())
 	}
 	// The other groups cannot be folded.
