@@ -168,6 +168,9 @@ func (p *Page) reqGroups(c *ui.Context, w *words, hit func(...string) bool) {
 				p.chooseReq(r)
 			}
 			widgets.ContextMenu(c, row, func(m *ui.Menu) {
+				if m.Item(w.CopyIDTitle).Chosen() {
+					c.WriteClipboard(r.ID + " " + r.Title)
+				}
 				if m.Item(w.Rename).Chosen() {
 					p.renaming, p.renameText, p.renameFocus = r.ID, r.Title, false
 					c.Invalidate()

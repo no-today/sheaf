@@ -176,6 +176,7 @@ type words struct {
 	UnfoldAll         string
 	FoldAllHint       string
 	CopyPath          string
+	CopyIDTitle       string
 	WcTag             string
 	NewFile           string
 	StreamEnd         string
@@ -408,6 +409,7 @@ var tr = i18n.New(words{
 	UnfoldAll:         "全部展开",
 	FoldAllHint:       "（⌥ 点击：全部文件）",
 	CopyPath:          "复制路径",
+	CopyIDTitle:       "复制 ID 和标题",
 	WcTag:             "含未提交",
 	NewFile:           "新文件",
 	StreamEnd:         "共 {n} 个文件",
@@ -638,6 +640,7 @@ var tr = i18n.New(words{
 	UnfoldAll:         "Expand All",
 	FoldAllHint:       " (⌥-click: all files)",
 	CopyPath:          "Copy Path",
+	CopyIDTitle:       "Copy ID and Title",
 	WcTag:             "uncommitted",
 	NewFile:           "new file",
 	StreamEnd:         "{n} file in total|{n} files in total",
