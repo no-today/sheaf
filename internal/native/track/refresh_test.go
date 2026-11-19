@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"sheaf/internal/native/view"
 	"sheaf/internal/session"
@@ -352,4 +353,110 @@ func TestReadingRowReloadsOnFirstRead(t *testing.T) {
 	if !h.p.newUncommitted([]string{path}) {
 		t.Error("a row being read ignores its first count")
 	}
+}
+
+// Refreshing remotes while a diff is read moves the left pane's stages; only the diff waits for the reader.
+func TestReviewIndexChangeUpdatesStages(t *testing.T) {
+	root := fixture(t)
+	h := openAt(t, root, "zh-Hans")
+	h.Until("initial diff", func() bool { return h.p.stream.Loaded() > 0 && !h.TT.FramePending() })
+	before := h.p.rows[0].Stage
+	a := testutil.NewRepoAt(t, filepath.Join(root, "repo-a"))
+	a.Git("merge", "-q", "--no-ff", "-m", "merge YT1", "master")
+	for _, ref := range []string{"refs/heads/master", "refs/remotes/origin/master"} {
+		a.Git("update-ref", ref, "feat-YT1")
+	}
+	if err := h.H.S.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reread := h.p.reread
+	h.p.Event(view.IndexChanged{Update: session.IndexUpdate{ChangedRepos: []string{"repo-a"}}})
+	h.Until("stage moved", func() bool { return len(h.p.rows) > 0 && h.p.rows[0].Stage != before && !h.TT.FramePending() })
+	if !h.p.pending || h.p.reread != reread {
+		t.Fatalf("the diff being read reloaded: pending=%v", h.p.pending)
+	}
+	h.Shot("review-index-stages")
+}
+
+// A working directory edited while its diff is read moves the left pane's stage; only the diff waits for the reader.
+func TestReviewWorktreeChangeUpdatesStages(t *testing.T) {
+	root := fixture(t)
+	h := openAt(t, root, "zh-Hans")
+	h.Until("initial diff", func() bool { return h.p.stream.Loaded() > 0 && !h.TT.FramePending() })
+	before := h.p.rows[0].Stage
+	dir := filepath.Join(root, "repo-a")
+	shotWrite(t, filepath.Join(dir, "y.txt"), "edited\n", 0o644)
+	reread := h.p.reread
+	h.H.S.RefreshDirty(t.Context(), []string{dir}, true)
+	h.Until("stage moved", func() bool { return len(h.p.rows) > 0 && h.p.rows[0].Stage != before && !h.TT.FramePending() })
+	if !h.p.pending || h.p.reread != reread {
+		t.Fatalf("the diff being read reloaded: pending=%v", h.p.pending)
+	}
+}
+
+// Refreshing remotes moves the behind counts the uncommitted page shows.
+func TestUncommittedIndexChangeUpdatesCounts(t *testing.T) {
+	root := fixture(t)
+	dir := filepath.Join(root, "repo-a")
+	shotWrite(t, filepath.Join(dir, "pending.txt"), "x\n", 0o644)
+	h := openAt(t, root, "zh-Hans")
+	h.p.choose(wcID)
+	behind := func() int {
+		if h.p.dirty.view == nil {
+			return -1
+		}
+		for _, d := range h.p.dirty.dirs() {
+			if d.Path == dir {
+				return d.Behind
+			}
+		}
+		return -1
+	}
+	h.Until("uncommitted page", func() bool { return behind() >= 0 && !h.p.dirty.busy && !h.TT.FramePending() })
+	before := behind()
+	a := testutil.NewRepoAt(t, dir)
+	tip := a.Git("commit-tree", "-p", "master", "-m", "moved on", "master^{tree}")
+	for _, ref := range []string{"refs/heads/master", "refs/remotes/origin/master"} {
+		a.Git("update-ref", ref, tip)
+	}
+	if err := h.H.S.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h.p.Event(view.IndexChanged{Update: session.IndexUpdate{ChangedRepos: []string{"repo-a"}}})
+	h.Until("behind moved", func() bool { return behind() == before+1 && !h.TT.FramePending() })
+}
+
+// The index event that reaches the page while a full read made from the old index is still on its way is not lost: the
+// stages are read again once that read ends.
+func TestReviewIndexChangeDuringReadUpdatesStages(t *testing.T) {
+	root := fixture(t)
+	a := testutil.NewRepoAt(t, filepath.Join(root, "repo-a"))
+	// release fast-forwards to the branch: no merge commit to classify, which would read the stages again by itself.
+	for _, ref := range []string{"refs/heads/release", "refs/remotes/origin/release"} {
+		a.Git("update-ref", ref, "feat-YT1~1")
+	}
+	h := openAt(t, root, "zh-Hans")
+	h.Until("initial diff", func() bool { return h.p.stream.Loaded() > 0 && !h.TT.FramePending() })
+	before := h.p.rows[0].Stage
+	h.p.apply(true)
+	// The read finishes against the old index; its result is held back.
+	time.Sleep(300 * time.Millisecond)
+	held := h.H.Take()
+	for _, ref := range []string{"refs/heads/release", "refs/remotes/origin/release"} {
+		a.Git("update-ref", ref, "feat-YT1")
+	}
+	if err := h.H.S.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The index event comes first, while the page still waits for the read.
+	for _, f := range h.H.Take() {
+		f()
+	}
+	if !h.p.aggBusy {
+		t.Fatal("the full read ended before the index event")
+	}
+	for _, f := range held {
+		f()
+	}
+	h.Until("stage moved", func() bool { return len(h.p.rows) > 0 && h.p.rows[0].Stage != before && !h.TT.FramePending() })
 }

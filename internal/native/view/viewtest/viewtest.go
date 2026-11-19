@@ -170,6 +170,15 @@ func (h *Host) Update(f func()) {
 // Close stops the updates, as the window's closing does.
 func (h *Host) Close() { h.cancel() }
 
+// Take removes the queued updates without running them, so a test can run them in an order of its choosing.
+func (h *Host) Take() []func() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	fs := h.queue
+	h.queue = nil
+	return fs
+}
+
 // Drain runs the queued updates.
 func (h *Host) Drain() {
 	h.mu.Lock()

@@ -72,8 +72,13 @@ type Page struct {
 	aggErr   string
 	aggBusy  bool
 	aggSeq   int
-	rows     []session.AggRepo
-	frozen   []string // the order of the rows before a batch action, kept until the page is entered again or another filter shows
+	// stagesSeq numbers the stage-only reads: a slower older one must not put back the stages a newer one read.
+	stagesSeq int
+	// stagesStale: the index changed while a full read was running, which may have read it before; the stages are
+	// read again once it ends.
+	stagesStale bool
+	rows        []session.AggRepo
+	frozen      []string // the order of the rows before a batch action, kept until the page is entered again or another filter shows
 
 	files       []session.AggFile
 	filesVer    int                 // bumped as files is replaced
@@ -219,9 +224,13 @@ func (p *Page) Event(e view.Event) {
 		}
 	case view.IndexChanged:
 		p.follow(p.h.Info())
-		if !p.affectedRepos(e.Update.ChangedRepos) || p.holdChanges() {
+		switch {
+		case !p.affectedRepos(e.Update.ChangedRepos):
 			p.loadReqs()
-		} else {
+		case p.holdChanges():
+			p.loadReqs()
+			p.refreshStages()
+		default:
 			p.reload()
 		}
 	case view.ConfigChanged:
@@ -238,6 +247,7 @@ func (p *Page) Event(e view.Event) {
 				p.reload()
 				return
 			}
+			p.refreshStages()
 		} else if p.newUncommitted(e.Status.Read) {
 			// Not a change under the reader: the page was drawn before these files were known.
 			p.reload()
@@ -597,6 +607,27 @@ func (p *Page) gotReqs(reqs []session.Requirement, err error, force bool) {
 	}
 	if !p.pending {
 		p.applyAggregate(force, true)
+	} else if force {
+		p.refreshStages()
+	}
+}
+
+// refreshStages reads the overview of the entry on screen again for its stages only: the diff being read stays as it
+// is until the reader asks for the new one.
+func (p *Page) refreshStages() {
+	in := p.inputFor(p.picked())
+	if in == nil {
+		return
+	}
+	if p.aggBusy {
+		p.stagesStale = true
+		return
+	}
+	if p.res == nil {
+		return
+	}
+	if b, _ := json.Marshal(in); string(b) == p.loaded {
+		p.applyAggregate(true, true)
 	}
 }
 
@@ -636,11 +667,12 @@ func (p *Page) applyAggregate(force, stagesOnly bool) {
 		p.stopAggregateLoads()
 		p.aggBusy = true
 	}
-	seq, s, ctx, input := p.aggSeq, p.s, p.h.Caller(), *in
+	p.stagesSeq++
+	seq, stagesSeq, s, ctx, input := p.aggSeq, p.stagesSeq, p.s, p.h.Caller(), *in
 	go func() {
 		res, err := s.TagAgg(ctx, input)
 		p.h.Update(func() {
-			if seq != p.aggSeq {
+			if seq != p.aggSeq || stagesOnly && stagesSeq != p.stagesSeq {
 				return
 			}
 			if !stagesOnly {
@@ -667,6 +699,10 @@ func (p *Page) applyAggregate(force, stagesOnly bool) {
 			p.loadAvail(input, force)
 			p.loadStats(input)
 			p.loadCommits(input)
+			if p.stagesStale {
+				p.stagesStale = false
+				p.refreshStages()
+			}
 		})
 	}()
 }
@@ -675,7 +711,7 @@ func (p *Page) stopAggregateLoads() {
 	p.aggSeq++
 	p.filesSeq++
 	p.statsSeq++
-	p.aggBusy, p.filesBusy = false, false
+	p.aggBusy, p.filesBusy, p.stagesStale = false, false, false
 }
 
 // rebuildRows lays the frozen order over the overview.
